@@ -1,0 +1,554 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- Title Updated -->
+    <title>Centro de Cura Reiki Mãos - V2.3 (Icosahedron Interaction)</title>
+    <style>
+        /* --- Estilos Base --- */
+        body, html { margin: 0; padding: 0; overflow: hidden; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #f0f8ff; height: 100%; width: 100%; }
+        #canvas-container { width: 100vw; height: 100vh; position: absolute; top: 0; left: 0; z-index: 1; cursor: grab; }
+        #canvas-container.pointer-locked { cursor: none; }
+        canvas#three-canvas { display: block; }
+
+        /* --- Canvas de Partículas (Sobreposição) --- */
+        #particle-canvas { position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index: 2; pointer-events: none; }
+        #completion-particle-canvas { position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index: 2; pointer-events: none; mix-blend-mode: screen; /* Optional blend mode */ }
+
+
+        /* --- Imagem Mãos de Reiki --- */
+        #mouse-hands { position: fixed; width: 150px; height: auto; bottom: 10px; left: 50%; transform: translateX(-50%); pointer-events: none; z-index: 3; transition: transform 0.15s ease-out, opacity 0.3s ease; filter: drop-shadow(0px 0px 8px rgba(255, 255, 255, 0.5)); opacity: 0; display: none; }
+        #canvas-container.pointer-locked ~ #mouse-hands { display: block; opacity: 1; }
+        #mouse-hands.active { transform: translateX(-50%) scale(0.95); }
+
+        /* --- Container Painel Direito --- */
+        #right-panel-container { position: absolute; top: 20px; right: 20px; width: 300px; max-width: 90%; max-height: calc(100vh - 40px); display: flex; flex-direction: column; gap: 15px; z-index: 10; }
+
+        /* --- Painel de Missão --- */
+        #mission-panel { background: rgba(255, 255, 255, 0.9); color: #333; border: 1px solid #ddd; padding: 15px; border-radius: 10px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); font-size: 0.9em; border-left: 4px solid #4fc3f7; flex-shrink: 1; min-height: 150px; }
+        #mission-panel h4 { border-bottom: 1px solid #b3e5fc; padding-bottom: 8px; margin-top: 0; margin-bottom: 10px; color: #0277bd; font-weight: bold; }
+        #mission-panel h5 { margin-top: 15px; margin-bottom: 8px; color: #0288d1; font-weight: bold; }
+        #current-mission { padding: 10px; background-color: rgba(79, 195, 247, 0.1); border-radius: 5px; margin-bottom: 15px; border-left: 3px solid #ffeb3b; min-height: 30px; line-height: 1.5; }
+        #status-message { margin-top: 15px; padding: 10px; background-color: rgba(0, 0, 0, 0.05); border-radius: 5px; min-height: 35px; font-style: italic; color: #555; line-height: 1.4; transition: opacity 0.5s ease; }
+
+        /* --- Painel de Energia --- */
+        #energy-panel { background: rgba(255, 255, 255, 0.9); color: #333; border: 1px solid #ddd; padding: 15px; border-radius: 10px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); font-size: 0.85em; border-left: 4px solid #ce93d8; flex-shrink: 0; }
+        #energy-panel h4 { border-bottom: 1px solid #e1bee7; padding-bottom: 8px; margin-top: 0; margin-bottom: 10px; color: #8e24aa; font-weight: bold; }
+        #energy-list { list-style: none; padding: 0; margin: 0; display: grid; grid-template-columns: 1fr 1fr; gap: 8px;}
+        #energy-list li { padding: 5px 8px; border-radius: 4px; display: flex; align-items: center; gap: 6px; border: 1px solid #eee; transition: all 0.3s ease; position: relative; }
+        .energy-icon { display: inline-block; width: 16px; height: 16px; border-radius: 50%; border: 1px solid rgba(0,0,0,0.2); }
+        .energy-name { flex-grow: 1; font-size: 0.9em; }
+        .energy-status { font-weight: bold; font-size: 0.95em; }
+        #energy-list li.active-energy { box-shadow: 0 0 8px 2px gold; border: 1px solid gold; background-color: rgba(255, 215, 0, 0.1); }
+        #energy-list li.supreme-energy { border: 2px solid gold !important; box-shadow: 0 0 12px 4px rgba(255, 215, 0, 0.7) !important; background-color: rgba(255, 255, 180, 0.2) !important; }
+        #energy-list li.supreme-energy::after { content: "SUPREMO"; position: absolute; top: -8px; right: 5px; font-size: 0.6em; font-weight: bold; color: gold; background-color: rgba(0,0,0,0.6); padding: 1px 3px; border-radius: 3px; text-shadow: 0 0 2px black; }
+
+        /* --- Elementos UI --- */
+        #instructions { position: absolute; bottom: 70px; left: 50%; transform: translateX(-50%); background: rgba(0, 0, 0, 0.75); color: white; padding: 10px 20px; border-radius: 20px; font-size: 0.9em; z-index: 4; pointer-events: none; opacity: 1; transition: opacity 1s ease 4s; text-align: center; }
+        #instructions.hidden { opacity: 0; }
+        #controls-toggle { position: absolute; bottom: 20px; left: 20px; padding: 10px 15px; background-color: #607D8B; color: white; border: none; border-radius: 5px; cursor: pointer; z-index: 5; font-size: 0.9em; }
+        #crosshair { position: absolute; top: 50%; left: 50%; width: 4px; height: 4px; background-color: white; border: 1px solid black; border-radius: 50%; transform: translate(-50%, -50%); z-index: 5; mix-blend-mode: difference; display: none; pointer-events: none;}
+        #canvas-container.pointer-locked ~ #crosshair { display: block; }
+        #minimap-container { position: absolute; bottom: 20px; right: 20px; width: 150px; height: 150px; border: 2px solid rgba(0, 0, 0, 0.2); background-color: rgba(255, 255, 255, 0.8); border-radius: 8px; z-index: 4; overflow: hidden; box-shadow: 0 0 10px rgba(0,0,0,0.1); }
+        #minimap-canvas { width: 100%; height: 100%; display: block; }
+
+        /* --- Rótulos Mundo/Objetos --- */
+        .world-label { position: absolute; background-color: rgba(0, 0, 0, 0.6); color: #fff; padding: 3px 7px; border-radius: 4px; font-size: 11px; white-space: nowrap; transform: translate(-50%, -150%); user-select: none; pointer-events: none; display: none; opacity: 0; transition: opacity 0.3s ease; z-index: 4; }
+        .world-label.visible { display: block; opacity: 1; }
+
+        /* --- UI Necessidades Paciente --- */
+        #patient-ui-container { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 5; }
+        .patient-needs-ui { position: absolute; transform: translate(-50%, -100%); background-color: rgba(0, 0, 0, 0.7); color: white; padding: 6px 10px; border-radius: 6px; font-size: 11px; display: none; flex-direction: column; gap: 4px; min-width: 120px; border: 1px solid rgba(255, 255, 255, 0.3); opacity: 0; transition: opacity 0.3s ease; }
+        .patient-needs-ui.visible { display: flex; opacity: 1; }
+        .patient-needs-ui .round-info { font-weight: bold; text-align: center; margin-bottom: 4px; border-bottom: 1px solid rgba(255,255,255,0.2); padding-bottom: 3px; font-size: 1.1em; }
+        .patient-needs-ui .need-bar-container { display: flex; align-items: center; gap: 5px; }
+        .patient-needs-ui .need-bar-icon { width: 12px; height: 12px; border-radius: 50%; flex-shrink: 0; border: 1px solid rgba(255,255,255,0.6); }
+        .patient-needs-ui .need-bar-outer { flex-grow: 1; height: 10px; background-color: rgba(255, 255, 255, 0.15); border-radius: 5px; overflow: hidden; border: 1px solid rgba(0,0,0,0.2); }
+        .patient-needs-ui .need-bar-inner { height: 100%; width: 0%; background-color: gold; border-radius: 4px; transition: width 0.2s ease-out; }
+        .patient-needs-ui .need-bar-percent { width: 30px; text-align: right; font-weight: bold; flex-shrink: 0; font-size: 0.95em; }
+
+        /* --- NEW: Interaction Prompt Style --- */
+        #interaction-prompt {
+            position: absolute;
+            bottom: 80px; /* Position above the hands/crosshair */
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(0, 0, 0, 0.8);
+            color: white;
+            padding: 12px 25px;
+            border-radius: 8px;
+            font-size: 1em;
+            z-index: 11; /* Above other UI */
+            pointer-events: none;
+            display: none; /* Hidden by default */
+            text-align: center;
+            border: 1px solid rgba(255, 255, 255, 0.5);
+            box-shadow: 0 0 15px rgba(255, 255, 255, 0.3);
+        }
+        #interaction-prompt strong { color: #ffeb3b; } /* Highlight the key */
+    </style>
+</head>
+<body>
+    <div id="canvas-container"></div>
+    <canvas id="particle-canvas"></canvas>
+    <canvas id="completion-particle-canvas"></canvas>
+
+    <img src="https://i.ibb.co/S43N9jGr/Chat-GPT-Image-8-04-2025-22-04-18.png" alt="Mãos de Reiki" id="mouse-hands">
+    <div id="world-labels-container"></div>
+    <div id="patient-ui-container"></div>
+    <div id="crosshair"></div>
+
+    <div id="right-panel-container">
+        <div id="energy-panel">
+            <h4>Energia Reiki ✨</h4>
+            <ul id="energy-list"></ul>
+        </div>
+        <div id="mission-panel">
+            <h4>Diário de Cura 💖</h4>
+            <h5>Missão Atual:</h5>
+            <div id="current-mission">Carregando...</div>
+            <hr style="border: none; height: 1px; background-color: #eee; margin: 15px 0;">
+            <div id="status-message">Explore o centro de cura...</div>
+        </div>
+    </div>
+
+    <div id="instructions">
+        Use [W/A/S/D] para mover, [Mouse] para olhar. Aproxime-se das fontes para carregar energia.<br>
+        Aproxime-se de Pacientes Curados para ativar [Energia Suprema]. Use [1-7] + [Espaço] para curar. [ESC] Sair.
+    </div>
+
+    <!-- NEW: Interaction Prompt Element -->
+    <div id="interaction-prompt"></div>
+
+    <button id="controls-toggle">Ativar Visão Pessoal</button>
+    <div id="minimap-container"><canvas id="minimap-canvas"></canvas></div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/PointerLockControls.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.9.1/gsap.min.js"></script>
+
+    <script>
+        // --- Configuração Básica (Three.js) ---
+        let currentControlsMode = 'orbit';
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0xe6f7ff);
+        scene.fog = new THREE.Fog(0xe6f7ff, 35, 80);
+        const camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.1, 1000);
+        camera.position.set(0, 15, 20); camera.lookAt(0, 0, 0);
+        const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+        const canvasContainer = document.getElementById('canvas-container');
+        renderer.domElement.id = 'three-canvas'; canvasContainer.appendChild(renderer.domElement);
+        const clock = new THREE.Clock();
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.8); scene.add(ambientLight);
+        const directionalLight = new THREE.DirectionalLight(0xffffff, 0.6);
+        directionalLight.position.set(15, 20, 10); directionalLight.castShadow = true;
+        directionalLight.shadow.mapSize.width = 2048; directionalLight.shadow.mapSize.height = 2048;
+        directionalLight.shadow.camera.near = 0.5; directionalLight.shadow.camera.far = 60;
+        directionalLight.shadow.camera.left = -30; directionalLight.shadow.camera.right = 30;
+        directionalLight.shadow.camera.top = 30; directionalLight.shadow.camera.bottom = -30;
+        scene.add(directionalLight);
+
+        // --- Referência às Mãos de Reiki ---
+        const handsImage = document.getElementById('mouse-hands');
+
+        // --- Constantes ---
+        const PLAYER_HEIGHT = 1.6;
+        const ROOM_RADIUS = 12; const ROOM_WIDTH = 7; const ROOM_DEPTH = 8; const ROOM_HEIGHT = 4;
+        const DOOR_WIDTH = 2; const DOOR_HEIGHT = 2.5; const WALL_THICKNESS = 0.2;
+        const ENERGY_CHARGING_RADIUS = 3.5; const ENERGY_CHARGING_RATE = 15;
+        const ENERGY_TORUS_RADIUS = 1.0; const ENERGY_TORUS_TUBE = 0.15;
+        const RADIAL_DRAIN_PERCENT_PER_SEC = 0.5;
+        const RADIAL_HEAL_RADIUS = 4.5; const RADIAL_HEAL_RATE = 8;
+        const PATIENT_UI_UPDATE_INTERVAL = 150;
+        const NUM_ROOMS = 7;
+        const ROUND_TARGETS = { 1: 10, 2: 15, 3: 20, 4: 25 };
+        const MAX_ROUNDS = 4;
+        const INTERACTION_TIMEOUT = 15000;
+        const patientPlaneHeight = PLAYER_HEIGHT * 0.95;
+        const SUPREME_ENERGY_ACTIVATION_RADIUS = 4.0;
+        const UPWARD_BEAM_HEIGHT = 30;
+        const HUB_SPOT_RADIUS = 0.5;
+        const PATIENT_BEAM_RADIUS_TOP = 0.15; const PATIENT_BEAM_RADIUS_BOTTOM = 0.4;
+        const HUB_BEAM_RADIUS_TOP = 0.1; const HUB_BEAM_RADIUS_BOTTOM = 0.3; const HUB_BEAM_HEIGHT = 15;
+        const ICOSAHEDRON_INTERACTION_RADIUS = 2.5; // NEW: Radius for interaction
+
+        // --- Dados dos Chakras ---
+        const chakraData = [ /* ... chakra data with isSupreme ... */ { id: 'muladhara', name: 'Base', color: 0xff0000, colorHex: '#ff0000', description: 'Segurança', energyLevel: 0, isActive: false, isSupreme: false }, { id: 'svadhisthana', name: 'Sacral', color: 0xffa500, colorHex: '#ffa500', description: 'Criatividade', energyLevel: 0, isActive: false, isSupreme: false }, { id: 'manipura', name: 'Plexo Solar', color: 0xffff00, colorHex: '#ffff00', description: 'Autoestima', energyLevel: 0, isActive: false, isSupreme: false }, { id: 'anahata', name: 'Cardíaco', color: 0x00ff00, colorHex: '#00ff00', description: 'Compaixão', energyLevel: 0, isActive: false, isSupreme: false }, { id: 'vishuddha', name: 'Laríngeo', color: 0x00bfff, colorHex: '#00bfff', description: 'Comunicação', energyLevel: 0, isActive: false, isSupreme: false }, { id: 'ajna', name: 'Frontal', color: 0x0000ff, colorHex: '#0000ff', description: 'Intuição', energyLevel: 0, isActive: false, isSupreme: false }, { id: 'sahasrara', name: 'Coronário', color: 0x8a2be2, colorHex: '#8a2be2', description: 'Conexão', energyLevel: 0, isActive: false, isSupreme: false }, ];
+
+        // --- Image URLs ---
+        const patientImageUrls = [ "https://i.ibb.co/Q7WwLQ0w/Ana2.png", "https://i.ibb.co/GfSF4jSx/Bruno.png", "https://i.ibb.co/Ndfj2Q1h/Clara.png", "https://i.ibb.co/GvKBKzxK/Davi.png", "https://i.ibb.co/Lh0TxC1s/Elisa.png", "https://i.ibb.co/Gv8PWrtc/Fabio.png", "https://i.ibb.co/4gNHHm4Z/Gabriela.png" ];
+        const patientHealedImageUrls = [ "https://i.ibb.co/TDhj2F01/AnaZen.png", "https://i.ibb.co/3mKHjHZh/BrunoZen.png", "https://i.postimg.cc/DZ8Zcwqc/ClaraZen.png", "https://i.ibb.co/9k22rwvX/DaviZen.png", "https://i.ibb.co/mVxMh3NF/ElisaZen.png", "https://i.ibb.co/nMwBY4bP/FabioZen.png", "https://i.ibb.co/pk6s8Cq/Gabriela-Zen.png" ];
+
+        // --- Texture Loader ---
+        const textureLoader = new THREE.TextureLoader();
+
+        // --- Estado do Jogo ---
+        const gameState = { patientsProgress: {}, gameComplete: false, isChargingEnergy: {}, lastPatientUIUpdateTime: 0, lastInteractedPatientId: null, lastInteractionTime: 0, };
+
+        // --- Definição de Missões ---
+        const missions = [ /* ... Mission data (unchanged structure, content simplified) ... */ { id: 'm01_intro', type: 'message', description: "Bem-vindo(a)! Use [1-7] para ativar energia e [Espaço] para liberá-la. Pacientes próximos serão curados." }, { id: 'm02_charge_prompt', type: 'message', description: "Aproxime-se das fontes para carregar energia. Cure os pacientes!" }, { id: 'pA_r1', type: 'heal_patient_round', targetPatientId: 'patient_muladhara', targetRound: 1, description: "Ana (1/4) [Sala Vermelha]: Sente-se [insegura]. Harmonize [Base ✨] com [Energia Vermelha]." }, { id: 'pA_r2', type: 'heal_patient_round', targetPatientId: 'patient_muladhara', targetRound: 2, description: "Ana (2/4): Insegurança afeta [emoções]. Harmonize [Base] e [Sacral ✨] com [Vermelha] e [Laranja]." }, { id: 'pA_r3', type: 'heal_patient_round', targetPatientId: 'patient_muladhara', targetRound: 3, description: "Ana (3/4): Conexão espiritual: [Base], [Sacral] e [Coronário ✨]. Use [Vermelha], [Laranja] e [Violeta]." }, { id: 'pA_r4', type: 'heal_patient_round', targetPatientId: 'patient_muladhara', targetRound: 4, description: "Ana (4/4): Final! Harmonize [TODOS ✨] para estabilidade." }, { id: 'pB_r1', type: 'heal_patient_round', targetPatientId: 'patient_svadhisthana', targetRound: 1, description: "Bruno (1/4) [Sala Laranja]: [Bloqueio criativo]. Harmonize [Sacral ✨] com [Energia Laranja]." }, { id: 'pB_r2', type: 'heal_patient_round', targetPatientId: 'patient_svadhisthana', targetRound: 2, description: "Bruno (2/4): Bloqueio afeta [autoconfiança]. Harmonize [Sacral] e [Plexo Solar ✨] com [Laranja] e [Amarela]." }, { id: 'pB_r3', type: 'heal_patient_round', targetPatientId: 'patient_svadhisthana', targetRound: 3, description: "Bruno (3/4): Ancorar criatividade: [Sacral], [Plexo Solar] e [Base ✨]. Use [Laranja], [Amarela] e [Vermelha]." }, { id: 'pB_r4', type: 'heal_patient_round', targetPatientId: 'patient_svadhisthana', targetRound: 4, description: "Bruno (4/4): Final! Libere [TODAS ✨] para seu potencial." }, { id: 'pC_r1', type: 'heal_patient_round', targetPatientId: 'patient_manipura', targetRound: 1, description: "Clara (1/4) [Sala Amarela]: [Baixa autoestima]. Harmonize [Plexo Solar ✨] com [Energia Amarela]." }, { id: 'pC_r2', type: 'heal_patient_round', targetPatientId: 'patient_manipura', targetRound: 2, description: "Clara (2/4): Autoestima afeta [relacionamentos]. Harmonize [Plexo Solar] e [Cardíaco ✨] com [Amarela] e [Verde]." }, { id: 'pC_r3', type: 'heal_patient_round', targetPatientId: 'patient_manipura', targetRound: 3, description: "Clara (3/4): Autoexpressão: [Plexo Solar], [Cardíaco] e [Sacral ✨]. Use [Amarela], [Verde] e [Laranja]." }, { id: 'pC_r4', type: 'heal_patient_round', targetPatientId: 'patient_manipura', targetRound: 4, description: "Clara (4/4): Final! Libere [TODAS ✨] para consolidar seu poder." }, { id: 'pD_r1', type: 'heal_patient_round', targetPatientId: 'patient_anahata', targetRound: 1, description: "Davi (1/4) [Sala Verde]: [Dificuldade em se conectar]. Harmonize [Cardíaco ✨] com [Energia Verde]." }, { id: 'pD_r2', type: 'heal_patient_round', targetPatientId: 'patient_anahata', targetRound: 2, description: "Davi (2/4): Dificuldade impede [comunicação]. Harmonize [Cardíaco] e [Laríngeo ✨] com [Verde] e [Azul Clara]." }, { id: 'pD_r3', type: 'heal_patient_round', targetPatientId: 'patient_anahata', targetRound: 3, description: "Davi (3/4): Expressar amor: [Cardíaco], [Laríngeo] e [Plexo Solar ✨]. Use [Verde], [Azul Clara] e [Amarela]." }, { id: 'pD_r4', type: 'heal_patient_round', targetPatientId: 'patient_anahata', targetRound: 4, description: "Davi (4/4): Abra o coração! Libere [TODAS ✨] para harmonizar." }, { id: 'pE_r1', type: 'heal_patient_round', targetPatientId: 'patient_vishuddha', targetRound: 1, description: "Elisa (1/4) [Sala Azul Clara]: [Medo de se expressar]. Harmonize [Laríngeo ✨] com [Energia Azul Clara]." }, { id: 'pE_r2', type: 'heal_patient_round', targetPatientId: 'patient_vishuddha', targetRound: 2, description: "Elisa (2/4): Medo afeta [intuição]. Harmonize [Laríngeo] e [Frontal ✨] com [Azul Clara] e [Anil]." }, { id: 'pE_r3', type: 'heal_patient_round', targetPatientId: 'patient_vishuddha', targetRound: 3, description: "Elisa (3/4): Comunicar compaixão: [Laríngeo], [Frontal] e [Cardíaco ✨]. Use [Azul Clara], [Anil] e [Verde]." }, { id: 'pE_r4', type: 'heal_patient_round', targetPatientId: 'patient_vishuddha', targetRound: 4, description: "Elisa (4/4): Liberte sua voz! Harmonize [TODAS ✨] para clareza." }, { id: 'pF_r1', type: 'heal_patient_round', targetPatientId: 'patient_ajna', targetRound: 1, description: "Fábio (1/4) [Sala Anil]: [Mente agitada]. Harmonize [Frontal ✨] com [Energia Anil]." }, { id: 'pF_r2', type: 'heal_patient_round', targetPatientId: 'patient_ajna', targetRound: 2, description: "Fábio (2/4): Agitação dificulta [conexão espiritual]. Harmonize [Frontal] e [Coronário ✨] com [Anil] e [Violeta]." }, { id: 'pF_r3', type: 'heal_patient_round', targetPatientId: 'patient_ajna', targetRound: 3, description: "Fábio (3/4): Clareza e comunicação: [Frontal], [Coronário] e [Laríngeo ✨]. Use [Anil], [Violeta] e [Azul Clara]." }, { id: 'pF_r4', type: 'heal_patient_round', targetPatientId: 'patient_ajna', targetRound: 4, description: "Fábio (4/4): Ilumine a mente! Libere [TODAS ✨] para intuição plena." }, { id: 'pG_r1', type: 'heal_patient_round', targetPatientId: 'patient_sahasrara', targetRound: 1, description: "Gabriela (1/4) [Sala Violeta]: [Desconectada espiritualmente]. Harmonize [Coronário ✨] com [Energia Violeta]." }, { id: 'pG_r2', type: 'heal_patient_round', targetPatientId: 'patient_sahasrara', targetRound: 2, description: "Gabriela (2/4): Desconexão afeta [segurança]. Harmonize [Coronário] e [Base ✨] com [Violeta] e [Vermelha]." }, { id: 'pG_r3', type: 'heal_patient_round', targetPatientId: 'patient_sahasrara', targetRound: 3, description: "Gabriela (3/4): Conectar espírito e intuição: [Coronário], [Base] e [Frontal ✨]. Use [Violeta], [Vermelha] e [Anil]." }, { id: 'pG_r4', type: 'heal_patient_round', targetPatientId: 'patient_sahasrara', targetRound: 4, description: "Gabriela (4/4): Conexão divina! Harmonize [TODAS ✨] para transcender." }, { id: 'm_final', type: 'message', description: "Parabéns! Todos pacientes harmonizados. 🙏 A paz foi restaurada! Aproxime-se deles para Energia Suprema." }, ];
+
+        // --- Armazenamento de Objetos ---
+        const roomObjects = {}; const energySourceMeshes = {}; const patientMeshes = {};
+        const worldLabelsContainer = document.getElementById('world-labels-container'); const worldLabelElements = {};
+        const statusMessageEl = document.getElementById('status-message'); const currentMissionEl = document.getElementById('current-mission');
+        const patientUIContainer = document.getElementById('patient-ui-container');
+        const torusGeometries = {}; const torusMaterials = {};
+
+        // --- Storage for dynamic visual effects ---
+        const upwardBeams = []; const hubSpots = []; const hubBeams = [];
+
+        // --- Completion Effects & Interaction ---
+        let centralLightObject = null;
+        let connectingLinesObject = null;
+        let icosahedronNPC = null;
+        let centralLightParticles = [];
+        let completionParticlesRunning = false;
+        let interactionPromptEl; // NEW: Reference to interaction prompt UI
+        let isInteractionPromptVisible = false; // NEW: State for prompt visibility
+
+        // --- Completion Particle System (Unchanged) ---
+        const completionParticleCanvas = document.getElementById('completion-particle-canvas');
+        const completionParticleCtx = completionParticleCanvas.getContext('2d');
+        function resizeCompletionParticleCanvas() { completionParticleCanvas.width = window.innerWidth; completionParticleCanvas.height = window.innerHeight; }
+        class CompletionParticle { /* ... CompletionParticle class ... */ constructor(x, y, sx, sy) { this.x = x; this.y = y; this.size = Math.random() * 2.5 + 1.0; this.speedX = sx; this.speedY = sy; this.color = `rgba(192, 192, 192, ${Math.random() * 0.5 + 0.4})`; this.life = Math.random() * 80 + 50; this.initialLife = this.life; this.drag = 0.99; this.opacity = 1.0; } update() { this.x += this.speedX; this.y += this.speedY; this.life -= 1; const fadeStart = this.initialLife * 0.6; if (this.life < fadeStart) { this.opacity = Math.max(0, (this.life / fadeStart)); } this.speedX *= this.drag; this.speedY *= this.drag; } draw(ctx) { ctx.globalAlpha = this.opacity; ctx.fillStyle = this.color; ctx.beginPath(); ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2); ctx.fill(); } }
+        function createCompletionParticles() { /* ... createCompletionParticles ... */ if (!gameState.gameComplete || !centralLightObject) return; const numParticles = 3; const centralLightWorldPos = centralLightObject.position.clone(); const screenPos = centralLightWorldPos.project(camera); if (screenPos.z > 1 || screenPos.x < -1 || screenPos.x > 1 || screenPos.y < -1 || screenPos.y > 1) { return; } const spawnX = (screenPos.x * 0.5 + 0.5) * window.innerWidth; const spawnY = (-screenPos.y * 0.5 + 0.5) * window.innerHeight; const initialSpeed = 1.2; for (let i = 0; i < numParticles; i++) { const angle = Math.random() * Math.PI * 2; const speedX = Math.cos(angle) * initialSpeed * (0.6 + Math.random() * 0.8); const speedY = Math.sin(angle) * initialSpeed * (0.6 + Math.random() * 0.8); centralLightParticles.push(new CompletionParticle(spawnX, spawnY, speedX, speedY)); } }
+        function animateCompletionParticles() { /* ... animateCompletionParticles ... */ if (!completionParticlesRunning) return; completionParticleCtx.clearRect(0, 0, completionParticleCanvas.width, completionParticleCanvas.height); createCompletionParticles(); let stillAnimating = false; for (let i = centralLightParticles.length - 1; i >= 0; i--) { centralLightParticles[i].update(); centralLightParticles[i].draw(completionParticleCtx); if (centralLightParticles[i].life <= 0) { centralLightParticles.splice(i, 1); } else { stillAnimating = true; } } completionParticlesRunning = gameState.gameComplete || stillAnimating; if (!completionParticlesRunning) { completionParticleCtx.clearRect(0, 0, completionParticleCanvas.width, completionParticleCanvas.height); console.log("Stopped completion particle animation."); } else { completionParticleCtx.globalAlpha = 1.0; } }
+
+        // --- Criação do Ambiente (Unchanged) ---
+        function createCenterLayout() { /* ... createCenterLayout ... */ const hubFloorGeo = new THREE.CircleGeometry(ROOM_RADIUS - ROOM_DEPTH / 2 - 1, 32); const hubFloorMat = new THREE.MeshStandardMaterial({ color: 0xf5f5f5, side: THREE.DoubleSide }); const hubFloor = new THREE.Mesh(hubFloorGeo, hubFloorMat); hubFloor.rotation.x = -Math.PI / 2; hubFloor.receiveShadow = true; scene.add(hubFloor); chakraData.forEach(chakra => { torusGeometries[chakra.id] = new THREE.TorusGeometry(ENERGY_TORUS_RADIUS, ENERGY_TORUS_TUBE, 16, 48); torusMaterials[chakra.id] = new THREE.MeshStandardMaterial({ color: chakra.color, emissive: chakra.color, emissiveIntensity: 0.7, roughness: 0.4, metalness: 0.1, transparent: true, opacity: 0.85, side: THREE.DoubleSide }); }); const patientNames = ["Ana", "Bruno", "Clara", "Davi", "Elisa", "Fábio", "Gabriela"]; for (let i = 0; i < NUM_ROOMS; i++) { createRoom(chakraData[i], (i / NUM_ROOMS) * Math.PI * 2, i, patientNames[i]); } console.log("Center layout created."); }
+        function createRoom(chakra, angle, index, patientName) { /* ... createRoom ... */ const roomGroup = new THREE.Group(); const roomX = Math.cos(angle) * ROOM_RADIUS; const roomZ = Math.sin(angle) * ROOM_RADIUS; roomGroup.position.set(roomX, 0, roomZ); roomGroup.rotation.y = -angle + Math.PI / 2; const roomColor = new THREE.Color(chakra.color); const wallMaterial = new THREE.MeshStandardMaterial({ color: roomColor.clone().offsetHSL(0, -0.2, 0.3), side: THREE.DoubleSide }); const floorMaterial = new THREE.MeshStandardMaterial({ color: roomColor.clone().offsetHSL(0, -0.1, 0.4), side: THREE.DoubleSide }); const floorGeo = new THREE.PlaneGeometry(ROOM_WIDTH, ROOM_DEPTH); const floor = new THREE.Mesh(floorGeo, floorMaterial); floor.rotation.x = -Math.PI / 2; floor.position.y = WALL_THICKNESS / 2; floor.receiveShadow = true; roomGroup.add(floor); const wallHeight = ROOM_HEIGHT; const wallGeoBack = new THREE.BoxGeometry(ROOM_WIDTH, wallHeight, WALL_THICKNESS); const wallBack = new THREE.Mesh(wallGeoBack, wallMaterial); wallBack.position.set(0, wallHeight/2, -ROOM_DEPTH / 2); wallBack.castShadow = true; wallBack.receiveShadow = true; roomGroup.add(wallBack); const wallGeoSide = new THREE.BoxGeometry(WALL_THICKNESS, wallHeight, ROOM_DEPTH); const wallLeft = new THREE.Mesh(wallGeoSide, wallMaterial); wallLeft.position.set(-ROOM_WIDTH / 2, wallHeight/2, 0); wallLeft.castShadow = true; wallLeft.receiveShadow = true; roomGroup.add(wallLeft); const wallRight = wallLeft.clone(); wallRight.position.x = ROOM_WIDTH / 2; roomGroup.add(wallRight); const frontWallPartWidth = (ROOM_WIDTH - DOOR_WIDTH) / 2; const wallGeoFrontPart = new THREE.BoxGeometry(frontWallPartWidth, wallHeight, WALL_THICKNESS); const wallFrontLeft = new THREE.Mesh(wallGeoFrontPart, wallMaterial); wallFrontLeft.position.set(- (DOOR_WIDTH / 2 + frontWallPartWidth / 2), wallHeight / 2, ROOM_DEPTH / 2); wallFrontLeft.castShadow = true; wallFrontLeft.receiveShadow = true; roomGroup.add(wallFrontLeft); const wallFrontRight = wallFrontLeft.clone(); wallFrontRight.position.x = DOOR_WIDTH / 2 + frontWallPartWidth / 2; roomGroup.add(wallFrontRight); const wallGeoAboveDoor = new THREE.BoxGeometry(DOOR_WIDTH, wallHeight - DOOR_HEIGHT, WALL_THICKNESS); const wallAboveDoor = new THREE.Mesh(wallGeoAboveDoor, wallMaterial); wallAboveDoor.position.set(0, DOOR_HEIGHT + (wallHeight - DOOR_HEIGHT) / 2, ROOM_DEPTH / 2); wallAboveDoor.castShadow = true; wallAboveDoor.receiveShadow = true; roomGroup.add(wallAboveDoor); const roomLight = new THREE.PointLight(chakra.color, 0.5, ROOM_WIDTH * 1.2); roomLight.position.y = ROOM_HEIGHT - 0.5; roomLight.castShadow = false; roomGroup.add(roomLight); roomGroup.userData = { type: 'room', id: chakra.id, name: `Sala ${chakra.name}` }; scene.add(roomGroup); roomObjects[chakra.id] = { group: roomGroup, floor: floor }; createPatient(chakra, roomGroup, index, patientName); createEnergySource(chakra, roomGroup); createWorldLabel(chakra.id + '_label', chakra.name, roomGroup.position.clone().add(new THREE.Vector3(0, ROOM_HEIGHT + 1, 0))); }
+        function createWorldLabel(id, text, position) { /* ... createWorldLabel ... */ const label = document.createElement('div'); label.textContent = text; label.className = 'world-label'; label.id = 'label-' + id; worldLabelsContainer.appendChild(label); worldLabelElements[id] = { element: label, position: position }; }
+        function createPatient(chakra, roomGroup, patientIndex, patientName) { /* ... createPatient ... */ const patientGroup = new THREE.Group(); const planeWidth = patientPlaneHeight * 0.5; const originalImageUrl = patientImageUrls[patientIndex]; const healedImageUrl = patientHealedImageUrls[patientIndex]; let originalTexture = null; let healedTexture = null; if (originalImageUrl) { originalTexture = textureLoader.load(originalImageUrl, undefined, undefined, (err) => console.error(`Error loading texture: ${originalImageUrl}`, err)); } else { console.warn(`Missing original image URL for index ${patientIndex}`); } if (healedImageUrl) { healedTexture = textureLoader.load(healedImageUrl, undefined, undefined, (err) => console.error(`Error loading healed texture: ${healedImageUrl}`, err)); } else { console.log(`No healed image URL for index ${patientIndex}.`); } const patientMaterial = new THREE.MeshStandardMaterial({ map: originalTexture, color: 0xffffff, side: THREE.DoubleSide, transparent: true, alphaTest: 0.1, roughness: 0.8, metalness: 0.1 }); const planeGeo = new THREE.PlaneGeometry(planeWidth, patientPlaneHeight); const patientPlaneMesh = new THREE.Mesh(planeGeo, patientMaterial); patientPlaneMesh.position.y = patientPlaneHeight / 2; patientPlaneMesh.castShadow = true; patientPlaneMesh.receiveShadow = false; patientGroup.add(patientPlaneMesh); patientGroup.position.copy(new THREE.Vector3(0, 0, -ROOM_DEPTH * 0.3)); patientGroup.rotation.y = Math.PI; const patientId = 'patient_' + chakra.id; const primaryChakraIndex = patientIndex; const initialNeeds = getNeedsForRound(primaryChakraIndex, 1); patientGroup.userData = { type: 'patient', id: patientId, primaryChakraId: chakra.id, primaryChakraIndex: primaryChakraIndex, name: patientName || `Paciente ${patientIndex+1}`, material: patientMaterial, baseColor: new THREE.Color(0xffffff), originalTexture: originalTexture, healedTexture: healedTexture, currentRound: 1, maxRounds: MAX_ROUNDS, currentNeeds: initialNeeds, isFullyHealed: false, needsHealingIndicator: true, needsUIElement: null, needsUIUpdate: true, isSupremeSource: false, supremeLight: null, upwardBeam: null, hubSpot: null, hubBeam: null }; gameState.patientsProgress[patientId] = { round: 1, fullyHealed: false }; roomGroup.add(patientGroup); patientMeshes[chakra.id] = patientGroup; createPatientUI(patientGroup); console.log(`Patient ${patientName} created.`); }
+        function createEnergySource(chakra, roomGroup) { /* ... createEnergySource ... */ const energyGeo = new THREE.SphereGeometry(0.3, 16, 12); const energyMaterial = new THREE.MeshStandardMaterial({ color: chakra.color, emissive: chakra.color, emissiveIntensity: 0.6, roughness: 0.3, metalness: 0.1 }); const energyMesh = new THREE.Mesh(energyGeo, energyMaterial); energyMesh.castShadow = true; energyMesh.position.copy(new THREE.Vector3(ROOM_WIDTH * 0.25, 0.8, ROOM_DEPTH * 0.2)); energyMesh.userData = { type: 'energy_source', id: 'energy_' + chakra.id, chakraId: chakra.id, name: `Fonte ${chakra.name.split(' ')[0]}`, isTorusActive: false }; roomGroup.add(energyMesh); energySourceMeshes[chakra.id] = { sphereMesh: energyMesh, torusMesh: null, chakraId: chakra.id, group: roomGroup }; gameState.isChargingEnergy[chakra.id] = false; }
+
+        // --- UI Functions (createPatientUI, updatePatientUI - Unchanged) ---
+        function createPatientUI(patientMeshGroup) { /* ... createPatientUI ... */ const ud = patientMeshGroup.userData; const uiElement = document.createElement('div'); uiElement.className = 'patient-needs-ui'; uiElement.id = 'needs-ui-' + ud.id; const roundInfo = document.createElement('div'); roundInfo.className = 'round-info'; uiElement.appendChild(roundInfo); patientUIContainer.appendChild(uiElement); ud.needsUIElement = uiElement; updatePatientUI(patientMeshGroup, true); }
+        function updatePatientUI(patientMeshGroup, forceStructureUpdate = false) { /* ... updatePatientUI ... */ const ud = patientMeshGroup.userData; const uiElement = ud.needsUIElement; if (!uiElement || ud.isFullyHealed) { if(uiElement) uiElement.classList.remove('visible'); return; } const patientWorldPos = patientMeshGroup.getWorldPosition(new THREE.Vector3()); const labelPos = patientWorldPos.clone().add(new THREE.Vector3(0, patientPlaneHeight + 0.3, 0)); tempVector.copy(labelPos); tempVector.project(camera); const distanceToCamera = camera.position.distanceTo(patientWorldPos); const maxUIDistance = 20; if (tempVector.z > 1 || distanceToCamera > maxUIDistance) { uiElement.classList.remove('visible'); return; } const x = (tempVector.x * 0.5 + 0.5) * window.innerWidth; const y = (-tempVector.y * 0.5 + 0.5) * window.innerHeight; uiElement.style.left = `${x}px`; uiElement.style.top = `${y}px`; uiElement.classList.add('visible'); if (!forceStructureUpdate && !ud.needsUIUpdate) return; const roundInfo = uiElement.querySelector('.round-info'); if (roundInfo) { roundInfo.textContent = `${ud.name} - R: ${ud.currentRound}/${ud.maxRounds}`; } const existingBars = uiElement.querySelectorAll('.need-bar-container'); existingBars.forEach(bar => bar.remove()); ud.currentNeeds.forEach(need => { const chakra = chakraData.find(c => c.id === need.chakraId); if (!chakra) return; const barContainer = document.createElement('div'); barContainer.className = 'need-bar-container'; const icon = document.createElement('div'); icon.className = 'need-bar-icon'; icon.style.backgroundColor = chakra.colorHex; barContainer.appendChild(icon); const outer = document.createElement('div'); outer.className = 'need-bar-outer'; const inner = document.createElement('div'); inner.className = 'need-bar-inner'; const displayPercent = Math.min(100, (need.currentPercent / need.targetPercent) * 100); inner.style.width = `${displayPercent}%`; inner.style.backgroundColor = chakra.colorHex; outer.appendChild(inner); barContainer.appendChild(outer); const percentText = document.createElement('div'); percentText.className = 'need-bar-percent'; percentText.textContent = `${Math.round(need.currentPercent)}%`; barContainer.appendChild(percentText); uiElement.appendChild(barContainer); }); ud.needsUIUpdate = false; }
+
+        // --- Controls (Unchanged) ---
+        const orbitControls = new THREE.OrbitControls(camera, renderer.domElement); orbitControls.enableDamping = true; orbitControls.dampingFactor = 0.07; orbitControls.screenSpacePanning = false; orbitControls.minDistance = 1; orbitControls.maxDistance = 60; orbitControls.maxPolarAngle = Math.PI / 2.05; orbitControls.target.set(0, PLAYER_HEIGHT / 2, 0); orbitControls.enabled = (currentControlsMode === 'orbit'); const pointerLockControls = new THREE.PointerLockControls(camera, document.body); scene.add(pointerLockControls.getObject()); const controlsToggleButton = document.getElementById('controls-toggle'); const instructionsEl = document.getElementById('instructions'); const tempVector = new THREE.Vector3();
+        pointerLockControls.addEventListener('lock', () => { canvasContainer.classList.add('pointer-locked'); controlsToggleButton.style.display = 'none'; instructionsEl.style.bottom = '20px'; pointerLockControls.getObject().position.y = PLAYER_HEIGHT; orbitControls.enabled = false; currentControlsMode = 'fpv'; isRadialReleasing = false; handsImage.classList.remove('active'); gameState.lastPatientUIUpdateTime = 0; /* Hide interaction prompt on lock */ if (isInteractionPromptVisible) { interactionPromptEl.style.display = 'none'; isInteractionPromptVisible = false; } }); pointerLockControls.addEventListener('unlock', () => { canvasContainer.classList.remove('pointer-locked'); currentControlsMode = 'orbit'; orbitControls.enabled = true; controlsToggleButton.style.display = 'block'; controlsToggleButton.textContent = 'Ativar Visão Pessoal'; instructionsEl.style.bottom = '70px'; moveState.forward = false; moveState.backward = false; moveState.left = false; moveState.right = false; velocity.set(0,0,0); isRadialReleasing = false; handsImage.classList.remove('active'); if (particles.length > 0) particleAnimationRunning = false; patientUIContainer.querySelectorAll('.patient-needs-ui').forEach(ui => ui.classList.remove('visible')); /* Hide interaction prompt on unlock */ if (isInteractionPromptVisible) { interactionPromptEl.style.display = 'none'; isInteractionPromptVisible = false; } }); controlsToggleButton.addEventListener('click', () => { if (currentControlsMode === 'orbit') { const startPos = camera.position.clone(); startPos.y = PLAYER_HEIGHT; const target = orbitControls.target.clone(); target.y = PLAYER_HEIGHT; pointerLockControls.getObject().position.copy(startPos); const tempCam = new THREE.PerspectiveCamera(); tempCam.position.copy(startPos); tempCam.lookAt(target); camera.quaternion.copy(tempCam.quaternion); pointerLockControls.lock(); } });
+
+        // --- Movement & Input ---
+        const moveState = { forward: false, backward: false, left: false, right: false }; const moveSpeed = 4.0; const velocity = new THREE.Vector3(); const direction = new THREE.Vector3(); let isRadialReleasing = false; let currentActiveChakra = null; const labelMaxDistance = 25;
+        const onKeyDown = (event) => {
+            // NEW: Handle Icosahedron Interaction
+            if (isInteractionPromptVisible && event.code === 'KeyE') {
+                event.preventDefault(); // Prevent other 'E' actions if needed
+                console.log("Interaction accepted. Redirecting...");
+                window.location.href = 'https://edaraujofilho.criadorlw.com.br/aula7pics';
+                return; // Stop further processing
+            }
+
+            if (!pointerLockControls.isLocked) return;
+            switch (event.code) {
+                case 'ArrowUp': case 'KeyW': moveState.forward = true; break;
+                case 'ArrowLeft': case 'KeyA': moveState.left = true; break;
+                case 'ArrowDown': case 'KeyS': moveState.backward = true; break;
+                case 'ArrowRight': case 'KeyD': moveState.right = true; break;
+                case 'Digit1': case 'Numpad1': setActiveEnergy(0); break;
+                case 'Digit2': case 'Numpad2': setActiveEnergy(1); break;
+                case 'Digit3': case 'Numpad3': setActiveEnergy(2); break;
+                case 'Digit4': case 'Numpad4': setActiveEnergy(3); break;
+                case 'Digit5': case 'Numpad5': setActiveEnergy(4); break;
+                case 'Digit6': case 'Numpad6': setActiveEnergy(5); break;
+                case 'Digit7': case 'Numpad7': setActiveEnergy(6); break;
+                case 'Space':
+                    if (!isRadialReleasing) {
+                        currentActiveChakra = chakraData.find(c => c.isActive);
+                        if (currentActiveChakra && currentActiveChakra.energyLevel > 0) {
+                            isRadialReleasing = true; particleAnimationRunning = true; handsImage.classList.add('active');
+                            updateStatus(`Liberação Radial ${currentActiveChakra.isSupreme ? 'Suprema ' : ''}${currentActiveChakra.name} ATIVADA`, 'highlight');
+                            event.preventDefault();
+                        } else {
+                            updateStatus("Nenhuma energia ATIVA ou energia esgotada.", "error");
+                        }
+                    }
+                    break;
+            }
+        };
+        const onKeyUp = (event) => { switch (event.code) { case 'ArrowUp': case 'KeyW': moveState.forward = false; break; case 'ArrowLeft': case 'KeyA': moveState.left = false; break; case 'ArrowDown': case 'KeyS': moveState.backward = false; break; case 'ArrowRight': case 'KeyD': moveState.right = false; break; case 'Space': if (isRadialReleasing) { isRadialReleasing = false; handsImage.classList.remove('active'); updateStatus("Liberação Radial Desativada", 'info'); } break; } };
+
+        // --- Particles (Unchanged) ---
+        const particleCanvas = document.getElementById('particle-canvas'); const particleCtx = particleCanvas.getContext('2d'); let particles = []; let particleAnimationRunning = false;
+        function resizeParticleCanvas() { particleCanvas.width = window.innerWidth; particleCanvas.height = window.innerHeight; }
+        class Particle { /* ... Particle class ... */ constructor(x, y, color, sx = null, sy = null, lifeMult = 1) { this.x = x; this.y = y; this.size = Math.random() * 4 + 1.5; this.speedX = sx !== null ? sx : Math.random() * 2 - 1; this.speedY = sy !== null ? sy : Math.random() * -3 - 1; this.color = color; this.life = (Math.random() * 60 + 40) * lifeMult; this.initialLife = this.life; this.opacity = 0.8; this.drag = 0.98 + Math.random() * 0.015; } update() { this.x += this.speedX; this.y += this.speedY; this.life -= 1; const fadeStartLife = this.initialLife * 0.5; if (this.life < fadeStartLife) { this.opacity = Math.max(0, (this.life / fadeStartLife) * 0.8); } this.speedY *= this.drag; this.speedX *= this.drag; } draw() { particleCtx.globalAlpha = this.opacity; particleCtx.fillStyle = this.color; particleCtx.beginPath(); particleCtx.arc(this.x, this.y, this.size, 0, Math.PI * 2); particleCtx.fill(); particleCtx.globalAlpha = 1; } }
+        function getActiveHealingColorHex() { return currentActiveChakra ? currentActiveChakra.colorHex : null; }
+        function createRadialParticles() { /* ... createRadialParticles ... */ if (!isRadialReleasing || !currentActiveChakra || currentActiveChakra.energyLevel <= 0) { return; } const activeColor = getActiveHealingColorHex(); if (!activeColor) return; const numParticles = currentActiveChakra.isSupreme ? 8 : 4; const initialSpeed = currentActiveChakra.isSupreme ? 2.5 : 1.5; const spawnX = window.innerWidth / 2; const spawnY = window.innerHeight / 2 + 50; for (let i = 0; i < numParticles; i++) { const angle = Math.random() * Math.PI * 2; const speedX = Math.cos(angle) * initialSpeed * (0.8 + Math.random() * 0.4); const speedY = Math.sin(angle) * initialSpeed * (0.8 + Math.random() * 0.4); particles.push(new Particle(spawnX, spawnY, activeColor, speedX, speedY, currentActiveChakra.isSupreme ? 1.5 : 1.2)); } }
+        function animateParticles() { /* ... animateParticles ... */ particleCtx.clearRect(0, 0, particleCanvas.width, particleCanvas.height); createRadialParticles(); particleAnimationRunning = false; for (let i = particles.length - 1; i >= 0; i--) { particles[i].update(); particles[i].draw(); if (particles[i].life <= 0) { particles.splice(i, 1); } else { particleAnimationRunning = true; } } if (isRadialReleasing && currentActiveChakra && currentActiveChakra.energyLevel > 0) { particleAnimationRunning = true; } }
+
+        // --- Energy Management (setActiveEnergy - Unchanged) ---
+        function setActiveEnergy(chakraIndex) { if (chakraIndex < 0 || chakraIndex >= chakraData.length) return; const selectedChakra = chakraData[chakraIndex]; if (selectedChakra.energyLevel > 0) { if (currentActiveChakra) { currentActiveChakra.isActive = false; } selectedChakra.isActive = true; currentActiveChakra = selectedChakra; updateEnergyPanel(); updateStatus(`Energia ${selectedChakra.name} ${selectedChakra.isSupreme ? '(Suprema) ' : ''}ATIVADA.`, 'highlight'); } else { updateStatus(`Energia ${selectedChakra.name} está esgotada (0%).`, 'error'); } }
+
+        // --- resetAllEnergy (Handles prompt visibility) ---
+        function resetAllEnergy() {
+             chakraData.forEach(chakra => { chakra.energyLevel = 0; chakra.isActive = false; chakra.isSupreme = false; });
+             currentActiveChakra = null; updateEnergyPanel();
+             isRadialReleasing = false; handsImage.classList.remove('active');
+             gameState.lastInteractedPatientId = null; gameState.lastInteractionTime = 0; gameState.gameComplete = false;
+
+             // Reset patients
+             for (const id in patientMeshes) {
+                 const pMeshGroup = patientMeshes[id]; const ud = pMeshGroup.userData;
+                 ud.currentRound = 1; ud.isFullyHealed = false; ud.needsHealingIndicator = true; ud.isSupremeSource = false;
+                 if (ud.material) { gsap.killTweensOf(ud.material.color); gsap.killTweensOf(ud.material); ud.material.color.set(0xffffff); ud.material.opacity = 1.0; if (ud.originalTexture && ud.material.map !== ud.originalTexture) { ud.material.map = ud.originalTexture; ud.material.needsUpdate = true; } }
+                 ud.currentNeeds = getNeedsForRound(ud.primaryChakraIndex, 1); gameState.patientsProgress[ud.id] = { round: 1, fullyHealed: false }; ud.needsUIUpdate = true; if(ud.needsUIElement) ud.needsUIElement.classList.remove('visible');
+                 if (ud.upwardBeam) { scene.remove(ud.upwardBeam); ud.upwardBeam.geometry.dispose(); ud.upwardBeam.material.dispose(); ud.upwardBeam = null; }
+                 if (ud.hubSpot) { scene.remove(ud.hubSpot); ud.hubSpot.geometry.dispose(); ud.hubSpot.material.dispose(); ud.hubSpot = null; }
+                 if (ud.hubBeam) { scene.remove(ud.hubBeam); ud.hubBeam.geometry.dispose(); ud.hubBeam.material.dispose(); ud.hubBeam = null; }
+                 if (ud.supremeLight) { pMeshGroup.remove(ud.supremeLight); ud.supremeLight = null; }
+             }
+             // Clear tracking arrays
+             upwardBeams.length = 0; hubSpots.length = 0; hubBeams.length = 0;
+
+             // --- Remove Completion Effects ---
+             if (centralLightObject) { scene.remove(centralLightObject); /* Dispose if needed */ centralLightObject = null; }
+             if (connectingLinesObject) { scene.remove(connectingLinesObject); connectingLinesObject.geometry.dispose(); connectingLinesObject.material.dispose(); connectingLinesObject = null; }
+             if (icosahedronNPC) { scene.remove(icosahedronNPC); icosahedronNPC.geometry.dispose(); icosahedronNPC.material.dispose(); icosahedronNPC = null; }
+             completionParticlesRunning = false; // Stop particle animation
+             centralLightParticles.length = 0; // Clear particle array
+             completionParticleCtx.clearRect(0, 0, completionParticleCanvas.width, completionParticleCanvas.height); // Clear canvas
+
+             // --- Hide Interaction Prompt ---
+             if (isInteractionPromptVisible) {
+                interactionPromptEl.style.display = 'none';
+                isInteractionPromptVisible = false;
+             }
+
+             updateMissionPanel();
+             updateStatus("Jogo reiniciado. Explore e cure novamente!", "info", true);
+             console.log("Patient progress, game state, and ALL effects reset.");
+        }
+
+        // --- handleRadialHealingToPatients (Unchanged) ---
+        function handleRadialHealingToPatients(delta, currentTime) { if (!isRadialReleasing || !currentActiveChakra) return; const playerPos = pointerLockControls.getObject().position; const activeChakraId = currentActiveChakra.id; const isSupremeActive = currentActiveChakra.isSupreme; let healingOccurred = false; for (const patientChakraId in patientMeshes) { const patientMeshGroup = patientMeshes[patientChakraId]; const ud = patientMeshGroup.userData; if (ud.isFullyHealed) continue; const patientPos = patientMeshGroup.getWorldPosition(new THREE.Vector3()); const distance = playerPos.distanceTo(patientPos); if (distance <= RADIAL_HEAL_RADIUS) { const neededEnergy = ud.currentNeeds.find(need => need.chakraId === activeChakraId); if (neededEnergy && neededEnergy.currentPercent < neededEnergy.targetPercent) { healingOccurred = true; gameState.lastInteractedPatientId = ud.id; gameState.lastInteractionTime = currentTime; if (isSupremeActive) { neededEnergy.currentPercent = neededEnergy.targetPercent; ud.needsUIUpdate = true; if(Math.random() < 0.1) updateStatus(`Cura Suprema ${currentActiveChakra.name} aplicada em ${ud.name}!`, 'success'); console.log(`Supreme heal ${currentActiveChakra.name} on ${ud.name}`); } else { const healAmount = RADIAL_HEAL_RATE * delta; neededEnergy.currentPercent = Math.min(neededEnergy.targetPercent, neededEnergy.currentPercent + healAmount); ud.needsUIUpdate = true; } const roundComplete = ud.currentNeeds.every(need => need.currentPercent >= need.targetPercent); if (roundComplete) { advancePatientRound(patientMeshGroup); } } } } if (healingOccurred) { updateMissionPanel(); } }
+
+        // --- Round/Healing Helpers (getNeedsForRound, advancePatientRound Unchanged) ---
+        function getNeedsForRound(primaryIndex, round) { if (round > MAX_ROUNDS) return []; const targetPercent = ROUND_TARGETS[round]; let neededChakraIds = []; switch (round) { case 1: neededChakraIds.push(chakraData[primaryIndex].id); break; case 2: neededChakraIds.push(chakraData[primaryIndex].id); neededChakraIds.push(chakraData[(primaryIndex + 1) % NUM_ROOMS].id); break; case 3: neededChakraIds.push(chakraData[primaryIndex].id); neededChakraIds.push(chakraData[(primaryIndex + 1) % NUM_ROOMS].id); neededChakraIds.push(chakraData[(primaryIndex - 1 + NUM_ROOMS) % NUM_ROOMS].id); break; case 4: neededChakraIds = chakraData.map(c => c.id); break; default: console.error(`Invalid round number: ${round}`); return []; } return neededChakraIds.map(id => ({ chakraId: id, targetPercent: targetPercent, currentPercent: 0 })); }
+        function advancePatientRound(patientMeshGroup) { const ud = patientMeshGroup.userData; if (ud.currentRound >= ud.maxRounds) { finalizePatientHealing(patientMeshGroup); return; } ud.currentRound++; if (gameState.patientsProgress[ud.id]) { gameState.patientsProgress[ud.id].round = ud.currentRound; } else { console.warn("Progress tracker missing:", ud.id); gameState.patientsProgress[ud.id] = { round: ud.currentRound, fullyHealed: false }; } ud.currentNeeds = getNeedsForRound(ud.primaryChakraIndex, ud.currentRound); if (ud.currentNeeds.length === 0 && ud.currentRound <= ud.maxRounds) { console.error(`No needs for ${ud.name} round ${ud.currentRound}`); finalizePatientHealing(patientMeshGroup); } else { ud.needsUIUpdate = true; updateStatus(`${ud.name} avançou para Rodada ${ud.currentRound}/${ud.maxRounds}!`, 'success'); updateMissionPanel(); } }
+
+        // --- finalizePatientHealing (Unchanged) ---
+        function finalizePatientHealing(patientMeshGroup) {
+            const ud = patientMeshGroup.userData; if (ud.isFullyHealed) return;
+            ud.isFullyHealed = true; ud.needsHealingIndicator = false; ud.isSupremeSource = true;
+            const finalTexture = ud.healedTexture || ud.originalTexture; if (finalTexture && ud.material.map !== finalTexture) { ud.material.map = finalTexture; ud.material.needsUpdate = true; console.log(`Swapped texture for ${ud.name}`); } else if (!finalTexture) { console.warn(`No final texture for ${ud.name}`); }
+            if (ud.material) { gsap.to(ud.material.color, { r: 0.9, g: 1.0, b: 0.9, duration: 0.8 }); gsap.to(ud.material, { opacity: 1.0, duration: 0.5 }); }
+            const chakraColor = chakraData[ud.primaryChakraIndex].color; const patientWorldPos = patientMeshGroup.getWorldPosition(new THREE.Vector3());
+            // 1. Upward Patient Beam
+            if (!ud.upwardBeam) { const beamGeo = new THREE.CylinderGeometry(PATIENT_BEAM_RADIUS_TOP, PATIENT_BEAM_RADIUS_BOTTOM, UPWARD_BEAM_HEIGHT, 12, 1, true); const beamMat = new THREE.MeshBasicMaterial({ color: chakraColor, emissive: chakraColor, emissiveIntensity: 1.5, transparent: true, opacity: 0.6, side: THREE.DoubleSide, depthWrite: false }); const beam = new THREE.Mesh(beamGeo, beamMat); beam.position.copy(patientWorldPos).add(new THREE.Vector3(0, UPWARD_BEAM_HEIGHT / 2 + patientPlaneHeight * 0.5, 0)); scene.add(beam); ud.upwardBeam = beam; upwardBeams.push(beam); gsap.from(beam.scale, { y: 0.1, duration: 1.5, ease: "power2.out" }); console.log(`Created patient beam for ${ud.name}`); }
+            // 2. Hub Spot
+            let hubSpotPos = null; if (!ud.hubSpot) { const spotGeo = new THREE.CircleGeometry(HUB_SPOT_RADIUS, 16); const spotMat = new THREE.MeshBasicMaterial({ color: chakraColor, emissive: chakraColor, emissiveIntensity: 1.0, transparent: true, opacity: 0.7, depthWrite: false }); const spot = new THREE.Mesh(spotGeo, spotMat); const roomAngle = Math.atan2(patientWorldPos.z, patientWorldPos.x); const hubRadius = ROOM_RADIUS - ROOM_DEPTH / 2 - 1.5; hubSpotPos = new THREE.Vector3(Math.cos(roomAngle) * hubRadius, 0.05, Math.sin(roomAngle) * hubRadius); spot.position.copy(hubSpotPos); spot.rotation.x = -Math.PI / 2; scene.add(spot); ud.hubSpot = spot; hubSpots.push(spot); gsap.from(spot.material, { opacity: 0, duration: 1.0 }); console.log(`Created hub spot for ${ud.name}`); } else { hubSpotPos = ud.hubSpot.position; }
+            // 3. Hub Beam (NEW)
+            if (!ud.hubBeam && hubSpotPos) { const hubBeamGeo = new THREE.CylinderGeometry(HUB_BEAM_RADIUS_TOP, HUB_BEAM_RADIUS_BOTTOM, HUB_BEAM_HEIGHT, 10, 1, true); const hubBeamMat = new THREE.MeshBasicMaterial({ color: chakraColor, emissive: chakraColor, emissiveIntensity: 1.2, transparent: true, opacity: 0.55, side: THREE.DoubleSide, depthWrite: false }); const hubBeam = new THREE.Mesh(hubBeamGeo, hubBeamMat); hubBeam.position.copy(hubSpotPos).add(new THREE.Vector3(0, HUB_BEAM_HEIGHT / 2, 0)); scene.add(hubBeam); ud.hubBeam = hubBeam; hubBeams.push(hubBeam); gsap.from(hubBeam.scale, { y: 0.1, duration: 1.2, ease: "power2.out" }); console.log(`Created hub beam for ${ud.name}`); }
+            // 4. Patient Supreme Light Emitter
+            if (!ud.supremeLight) { const light = new THREE.PointLight(chakraColor, 0, 5); light.position.set(0, patientPlaneHeight * 0.6, 0.2); patientMeshGroup.add(light); ud.supremeLight = light; console.log(`Created supreme light for ${ud.name}`); }
+            if (gameState.patientsProgress[ud.id]) { gameState.patientsProgress[ud.id].fullyHealed = true; } else { console.warn("Progress tracker missing:", ud.id); gameState.patientsProgress[ud.id] = { round: ud.currentRound, fullyHealed: true }; }
+            if (ud.needsUIElement) { ud.needsUIElement.classList.remove('visible'); }
+            updateStatus(`Parabéns! ${ud.name} está curado e agora emana Energia Suprema!`, 'success', true);
+            checkGameCompletion(); updateMissionPanel();
+        }
+
+        // --- checkGameCompletion (Unchanged) ---
+        function checkGameCompletion() {
+            const allHealed = Object.values(gameState.patientsProgress).every(p => p.fullyHealed);
+            if (allHealed && !gameState.gameComplete) {
+                 gameState.gameComplete = true;
+                 console.log("All patients healed! Creating completion effects.");
+                 createCompletionEffects(); // Call function to create final effects
+            }
+            return gameState.gameComplete;
+         }
+
+         // --- createCompletionEffects (Unchanged) ---
+         function createCompletionEffects() {
+             if (centralLightObject || connectingLinesObject || icosahedronNPC) { console.log("Completion effects already exist."); return; }
+             console.log("Creating completion effects...");
+             // 1. Central Bright Light
+             centralLightObject = new THREE.PointLight(0xffffff, 1.5, 15); centralLightObject.position.set(0, 1.0, 0); centralLightObject.castShadow = true; scene.add(centralLightObject);
+             // 2. Start Central Particle System
+             resizeCompletionParticleCanvas(); completionParticlesRunning = true; console.log("Started completion particle system.");
+             // 3. Connecting Lines
+             const linePoints = []; const centralPoint = new THREE.Vector3(0, 0.1, 0);
+             hubSpots.forEach(spot => { if (spot && spot.position) { linePoints.push(spot.position.clone()); linePoints.push(centralPoint); } });
+             if (linePoints.length > 0) { const lineGeometry = new THREE.BufferGeometry().setFromPoints(linePoints); const lineMaterial = new THREE.LineBasicMaterial({ color: 0xcccccc, linewidth: 2, transparent: true, opacity: 0.7 }); connectingLinesObject = new THREE.LineSegments(lineGeometry, lineMaterial); scene.add(connectingLinesObject); console.log("Created connecting lines."); } else { console.warn("No hub spots found to create connecting lines."); }
+             // 4. Floating Icosahedron NPC
+             const icoGeometry = new THREE.IcosahedronGeometry(0.6, 0); const icoMaterial = new THREE.MeshStandardMaterial({ color: 0xc0c0c0, metalness: 0.8, roughness: 0.2, emissive: 0xaaaaaa, emissiveIntensity: 0.4 });
+             icosahedronNPC = new THREE.Mesh(icoGeometry, icoMaterial); icosahedronNPC.position.set(0, 2, 0); icosahedronNPC.castShadow = true; scene.add(icosahedronNPC);
+             console.log("Created Icosahedron NPC.");
+         }
+
+        // --- UI Update Functions (updateStatus, getChakraColorName, updateWorldLabels, updateMissionPanel, updateEnergyPanel Unchanged) ---
+        function updateStatus(message, type = 'info', persistent = false) { if (statusMessageEl.gsapTimeout && (statusMessageEl.textContent !== message || persistent)) { clearTimeout(statusMessageEl.gsapTimeout); statusMessageEl.gsapTimeout = null; } if (statusMessageEl.textContent !== message || statusMessageEl.style.opacity === '0') { gsap.killTweensOf(statusMessageEl); statusMessageEl.textContent = message; statusMessageEl.style.opacity = 1; } let color = '#555'; if (type === 'success') color = '#2e7d32'; else if (type === 'error') color = '#c62828'; else if (type === 'highlight') color = '#0288d1'; else if (type === 'charging') color = '#8e24aa'; statusMessageEl.style.color = color; if (!persistent) { const duration = (type === 'highlight' || type === 'success' || type === 'charging') ? 5000 : 3500; statusMessageEl.gsapTimeout = setTimeout(() => { gsap.to(statusMessageEl, { opacity: 0, duration: 0.5, onComplete: () => { statusMessageEl.gsapTimeout = null; }}); }, duration); } }
+        function getChakraColorName(chakraId) { switch(chakraId) { case 'muladhara': return 'Vermelha'; case 'svadhisthana': return 'Laranja'; case 'manipura': return 'Amarela'; case 'anahata': return 'Verde'; case 'vishuddha': return 'Azul Clara'; case 'ajna': return 'Anil'; case 'sahasrara': return 'Violeta'; default: return ''; } }
+        function updateWorldLabels() { const cameraPosition = currentControlsMode === 'fpv' ? pointerLockControls.getObject().position : camera.position; for (const id in worldLabelElements) { const labelData = worldLabelElements[id]; const label = labelData.element; const position = labelData.position; const distanceToCamera = cameraPosition.distanceTo(position); if (distanceToCamera < labelMaxDistance && distanceToCamera > 1.0) { tempVector.copy(position); tempVector.project(camera); if (tempVector.z < 1 && tempVector.x > -1 && tempVector.x < 1 && tempVector.y > -1 && tempVector.y < 1) { const x = (tempVector.x * 0.5 + 0.5) * window.innerWidth; const y = (-tempVector.y * 0.5 + 0.5) * window.innerHeight; label.style.left = `${x}px`; label.style.top = `${y}px`; label.classList.add('visible'); } else { label.classList.remove('visible'); } } else { label.classList.remove('visible'); } } }
+        function updateMissionPanel() { let displayedMission = null; const currentTime = performance.now(); if (gameState.gameComplete) { displayedMission = missions.find(m => m.id === 'm_final'); let finalDesc = displayedMission ? displayedMission.description : "Todos curados!"; finalDesc = finalDesc.replace(/\[(.*?)\]/g, '<strong>$1</strong>'); currentMissionEl.innerHTML = `${finalDesc} 🎉 <br><i>Um ser de luz apareceu no centro! Aproxime-se...</i>`; currentMissionEl.style.borderColor = '#4CAF50'; updateStatus("Centro de Cura harmonizado!", "success", true); return; } const lastPatientId = gameState.lastInteractedPatientId; const timeSinceInteraction = currentTime - gameState.lastInteractionTime; if (lastPatientId && timeSinceInteraction < INTERACTION_TIMEOUT) { const progress = gameState.patientsProgress[lastPatientId]; if (progress && !progress.fullyHealed) { displayedMission = missions.find(m => m.type === 'heal_patient_round' && m.targetPatientId === lastPatientId && m.targetRound === progress.round ); } } if (!displayedMission) { for (const chakra of chakraData) { const patientId = 'patient_' + chakra.id; const progress = gameState.patientsProgress[patientId]; if (progress && !progress.fullyHealed) { displayedMission = missions.find(m => m.type === 'heal_patient_round' && m.targetPatientId === patientId && m.targetRound === progress.round ); if (displayedMission) break; } } } if (!displayedMission) { displayedMission = missions.find(m => m.type === 'message' && m.id !== 'm_final') || { id: 'default_msg', type: 'message', description: "Continue a harmonizar os pacientes." }; } if (displayedMission) { let desc = displayedMission.description; if (displayedMission.type === 'heal_patient_round' && ROUND_TARGETS[displayedMission.targetRound]) { desc += ` (Meta: ${ROUND_TARGETS[displayedMission.targetRound]}%)`; } desc = desc.replace(/\[(.*?)\]/g, '<strong>$1</strong>'); chakraData.forEach(chakra => { const regex = new RegExp(`(${chakra.name}|Energia ${chakra.name.split(' ')[0]}|${chakra.colorHex.toLowerCase()}|${getChakraColorName(chakra.id)})`, 'gi'); desc = desc.replace(regex, (match) => { if (match.startsWith('<strong')) return match; return `<strong style="color:${chakra.colorHex}; text-shadow: 0 0 2px rgba(0,0,0,0.3);">${match}</strong>`; }); }); desc = desc.replace(/(\d+\/\d+)/g, '<strong>$1</strong>'); desc = desc.replace(/(\d+%)/g, '<strong>$1</strong>'); desc = desc.replace(/\[Espaço\]/gi, '<strong>[Espaço]</strong>'); currentMissionEl.innerHTML = desc; currentMissionEl.style.borderColor = '#ffeb3b'; } else { currentMissionEl.innerHTML = "Carregando missão..."; currentMissionEl.style.borderColor = '#ccc'; } }
+        function updateEnergyPanel() { const energyListEl = document.getElementById('energy-list'); energyListEl.innerHTML = ''; chakraData.forEach((chakra, index) => { const li = document.createElement('li'); li.style.borderLeft = `4px solid ${chakra.colorHex}`; const icon = document.createElement('span'); icon.className = 'energy-icon'; icon.style.backgroundColor = chakra.colorHex; li.appendChild(icon); const name = document.createElement('span'); name.className = 'energy-name'; name.textContent = `[${index + 1}] ${chakra.name}`; li.appendChild(name); const status = document.createElement('span'); status.className = 'energy-status'; const percentage = Math.round(chakra.energyLevel); status.textContent = `${percentage}%`; if (percentage > 70) { status.style.color = '#4caf50'; li.style.backgroundColor = 'rgba(76, 175, 80, 0.08)'; } else if (percentage > 20) { status.style.color = '#ff9800'; li.style.backgroundColor = 'rgba(255, 152, 0, 0.08)';} else if (percentage > 0) { status.style.color = '#f44336'; li.style.backgroundColor = 'rgba(244, 67, 54, 0.08)'; } else { status.style.color = '#aaa'; li.style.backgroundColor = 'transparent'; } if (chakra.isActive) { li.classList.add('active-energy'); } else { li.classList.remove('active-energy'); } if (chakra.isSupreme) { li.classList.add('supreme-energy'); } else { li.classList.remove('supreme-energy'); } li.appendChild(status); energyListEl.appendChild(li); }); }
+
+        // --- Minimap (Unchanged) ---
+        const minimapCanvas = document.getElementById('minimap-canvas'); const minimapSize = 150; minimapCanvas.width = minimapSize; minimapCanvas.height = minimapSize; const minimapCtx = minimapCanvas.getContext('2d'); const minimapWorldSize = (ROOM_RADIUS + ROOM_WIDTH) * 2.2; let lastMinimapUpdateTime = 0; const minimapUpdateInterval = 100;
+        function worldToMinimap(worldPos) { const mapX = (worldPos.x / minimapWorldSize) * minimapSize + minimapSize / 2; const mapY = (-worldPos.z / minimapWorldSize) * minimapSize + minimapSize / 2; return { x: mapX, y: mapY }; }
+        function drawMinimapMarker(ctx, pos, color, size = 3, shape = 'circle', data = null) { if (!pos) return; const mapPos = worldToMinimap(pos); const cX = Math.max(size, Math.min(minimapSize - size, mapPos.x)); const cY = Math.max(size, Math.min(minimapSize - size, mapPos.y)); ctx.fillStyle = color; ctx.strokeStyle = color; ctx.lineWidth = 1; if (shape === 'circle') { ctx.beginPath(); ctx.arc(cX, cY, size, 0, Math.PI * 2); ctx.fill(); } else if (shape === 'square') { ctx.fillRect(cX - size / 2, cY - size / 2, size, size); } else if (shape === 'room') { const roomMapWidth = (ROOM_WIDTH / minimapWorldSize) * minimapSize; const roomMapDepth = (ROOM_DEPTH / minimapWorldSize) * minimapSize; const roomColor = new THREE.Color(color); ctx.strokeStyle = `rgba(${roomColor.r*255}, ${roomColor.g*255}, ${roomColor.b*255}, 0.5)`; ctx.lineWidth = 1.5; ctx.strokeRect(cX - roomMapWidth / 2, cY - roomMapDepth / 2, roomMapWidth, roomMapDepth); } else if (shape === 'patient') { ctx.beginPath(); ctx.arc(cX, cY, size, 0, Math.PI * 2); if (data && data.isFullyHealed) { ctx.fillStyle = 'rgba(255, 215, 0, 0.9)'; ctx.strokeStyle = 'rgba(218, 165, 32, 1)'; } else if (data && data.needsHealingIndicator) { ctx.fillStyle = 'rgba(255, 150, 100, 0.9)'; ctx.strokeStyle = 'rgba(180, 0, 0, 1)'; } else { ctx.fillStyle = 'rgba(200, 200, 200, 0.8)'; ctx.strokeStyle = 'rgba(50, 50, 50, 1)'; } ctx.fill(); ctx.lineWidth = 1.0; ctx.stroke(); } else if (shape === 'energy_sphere') { ctx.fillStyle = color + 'CC'; ctx.beginPath(); ctx.arc(cX, cY, size, 0, Math.PI * 2); ctx.fill(); } else if (shape === 'energy_torus') { ctx.strokeStyle = color; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.arc(cX, cY, size * 1.5, 0, Math.PI * 2); ctx.stroke(); } else if (shape === 'player') { const playerDir = new THREE.Vector3(); camera.getWorldDirection(playerDir); const angle = Math.atan2(-playerDir.z, playerDir.x) + Math.PI / 2; ctx.save(); ctx.translate(cX, cY); ctx.rotate(angle); ctx.beginPath(); ctx.moveTo(0, -size * 0.8); ctx.lineTo(-size * 0.6, size * 0.6); ctx.lineTo(size * 0.6, size * 0.6); ctx.closePath(); ctx.fillStyle = '#222222'; ctx.fill(); ctx.restore(); } }
+        function updateMinimap(currentTime) { if (currentTime - lastMinimapUpdateTime < minimapUpdateInterval) return; lastMinimapUpdateTime = currentTime; minimapCtx.fillStyle = 'rgba(240, 248, 255, 0.9)'; minimapCtx.fillRect(0, 0, minimapSize, minimapSize); minimapCtx.strokeStyle = 'rgba(0, 0, 0, 0.1)'; minimapCtx.lineWidth = 1; minimapCtx.strokeRect(0,0,minimapSize, minimapSize); for (let i = 0; i < NUM_ROOMS; i++) { const chakra = chakraData[i]; const roomGroup = roomObjects[chakra.id]?.group; if (roomGroup) { drawMinimapMarker(minimapCtx, roomGroup.position, chakra.colorHex, 0, 'room'); } } for (const chakraId in energySourceMeshes) { const sourceData = energySourceMeshes[chakraId]; const chakra = chakraData.find(c => c.id === chakraId); const worldPos = new THREE.Vector3(); if (sourceData.isTorusActive && sourceData.torusMesh) { sourceData.torusMesh.getWorldPosition(worldPos); drawMinimapMarker(minimapCtx, worldPos, chakra.colorHex, 2.5, 'energy_torus'); } else if (sourceData.sphereMesh) { sourceData.sphereMesh.getWorldPosition(worldPos); drawMinimapMarker(minimapCtx, worldPos, chakra.colorHex, 2.0, 'energy_sphere'); } } for (const chakraId in patientMeshes) { const meshGroup = patientMeshes[chakraId]; if (meshGroup && meshGroup.userData) { const worldPos = new THREE.Vector3(); meshGroup.getWorldPosition(worldPos); drawMinimapMarker(minimapCtx, worldPos, '#AAAAAA', 3, 'patient', meshGroup.userData); } } const playerPos = pointerLockControls.isLocked ? pointerLockControls.getObject().position : camera.position; drawMinimapMarker(minimapCtx, playerPos, '#000000', 4, 'player'); }
+
+        // --- Energy Charging (Unchanged) ---
+        function handleProximityCharging(delta) { if (!pointerLockControls.isLocked) return; const playerPos = pointerLockControls.getObject().position; let isChargingAny = false; let chargingChakraName = ''; for (const chakraId in energySourceMeshes) { const sourceData = energySourceMeshes[chakraId]; const sphereMesh = sourceData.sphereMesh; const chakra = chakraData.find(c => c.id === chakraId); if (!sphereMesh || !chakra) continue; const sourceWorldPos = sphereMesh.getWorldPosition(new THREE.Vector3()); const distance = playerPos.distanceTo(sourceWorldPos); if (distance <= ENERGY_CHARGING_RADIUS) { if (!sourceData.isTorusActive) { sphereMesh.visible = false; if (!sourceData.torusMesh) { sourceData.torusMesh = new THREE.Mesh(torusGeometries[chakraId], torusMaterials[chakraId]); sourceData.torusMesh.position.copy(sphereMesh.position); sourceData.torusMesh.castShadow = false; sourceData.group.add(sourceData.torusMesh); } sourceData.torusMesh.visible = true; sourceData.isTorusActive = true; } if (chakra.energyLevel < 100) { const chargeAmount = ENERGY_CHARGING_RATE * delta; chakra.energyLevel = Math.min(100, chakra.energyLevel + chargeAmount); gameState.isChargingEnergy[chakraId] = true; isChargingAny = true; chargingChakraName = chakra.name; if (Math.random() < 0.1) { updateEnergyPanel(); } } else { if(gameState.isChargingEnergy[chakraId]) { gameState.isChargingEnergy[chakraId] = false; if (Math.random() < 0.1) updateStatus(`Energia ${chakra.name} cheia (100%).`, 'info'); updateEnergyPanel(); } } } else { if (sourceData.isTorusActive) { if (sourceData.torusMesh) { sourceData.torusMesh.visible = false; } sphereMesh.visible = true; sourceData.isTorusActive = false; } if(gameState.isChargingEnergy[chakraId]) { gameState.isChargingEnergy[chakraId] = false; updateEnergyPanel(); } } } if (isChargingAny) { if (Math.random() < 0.1) updateStatus(`Carregando ${chargingChakraName}...`, 'charging'); } }
+
+        // --- handleSupremeEnergyActivation (Unchanged) ---
+        function handleSupremeEnergyActivation() {
+            if (!pointerLockControls.isLocked) return;
+            const playerPos = pointerLockControls.getObject().position; let statusNeedsUpdate = false;
+            for (const id in patientMeshes) {
+                const patientGroup = patientMeshes[id]; const ud = patientGroup.userData;
+                if (ud.isFullyHealed && ud.isSupremeSource) {
+                    const patientPos = patientGroup.getWorldPosition(new THREE.Vector3()); const distance = playerPos.distanceTo(patientPos);
+                    if (distance <= SUPREME_ENERGY_ACTIVATION_RADIUS) {
+                         const chakraIndex = ud.primaryChakraIndex;
+                         if (chakraIndex >= 0 && chakraIndex < chakraData.length) {
+                            const chakra = chakraData[chakraIndex];
+                            if (!chakra.isSupreme) { chakra.isSupreme = true; statusNeedsUpdate = true; updateStatus(`Energia ${chakra.name} Suprema ativada permanentemente!`, 'highlight', true); console.log(`Supreme energy ${chakra.name} activated.`); }
+                         }
+                    }
+                }
+            }
+            if (statusNeedsUpdate) { updateEnergyPanel(); }
+        }
+
+
+        // --- Input Listeners (Unchanged) ---
+         let listenersAttached = false;
+         function attachInputListeners() { if (listenersAttached) return; document.addEventListener('keydown', onKeyDown); document.addEventListener('keyup', onKeyUp); window.addEventListener('resize', onWindowResize); listenersAttached = true; console.log("Input listeners attached."); }
+         function onWindowResize() { camera.aspect = window.innerWidth / window.innerHeight; camera.updateProjectionMatrix(); renderer.setSize(window.innerWidth, window.innerHeight); resizeParticleCanvas(); resizeCompletionParticleCanvas(); updateMinimap(performance.now()); gameState.lastPatientUIUpdateTime = 0; console.log("Window resized."); }
+
+         // --- Loop de Animação ---
+         function animate() {
+             requestAnimationFrame(animate);
+             const delta = Math.min(clock.getDelta(), 0.1);
+             const elapsedTime = clock.getElapsedTime();
+             const currentTime = performance.now();
+
+             currentActiveChakra = chakraData.find(c => c.isActive);
+
+             // --- Game Logic Updates ---
+             handleProximityCharging(delta);
+             handleSupremeEnergyActivation();
+             handleRadialHealingToPatients(delta, currentTime);
+
+             // Radial Energy Drain
+             if (isRadialReleasing && currentActiveChakra && currentActiveChakra.energyLevel > 0) { /* ... drain logic ... */ const drainPercent = RADIAL_DRAIN_PERCENT_PER_SEC / 100.0; const drainAmount = currentActiveChakra.energyLevel * drainPercent * delta; currentActiveChakra.energyLevel = Math.max(0, currentActiveChakra.energyLevel - drainAmount); if (Math.random() < 0.08) { updateEnergyPanel(); } if (currentActiveChakra.energyLevel <= 0) { currentActiveChakra.energyLevel = 0; isRadialReleasing = false; handsImage.classList.remove('active'); updateStatus(`Energia ${currentActiveChakra.name} esgotada!`, 'error'); currentActiveChakra.isActive = false; currentActiveChakra = null; updateEnergyPanel(); particleAnimationRunning = particles.length > 0; } }
+
+             // Movement
+             let playerPos = null; // Define playerPos here to be accessible later
+             if (currentControlsMode === 'fpv' && pointerLockControls.isLocked) {
+                 /* FPV movement */
+                 velocity.x -= velocity.x * 10.0 * delta; velocity.z -= velocity.z * 10.0 * delta;
+                 direction.z = Number(moveState.forward) - Number(moveState.backward); direction.x = Number(moveState.right) - Number(moveState.left); direction.normalize();
+                 if (moveState.forward || moveState.backward) velocity.z -= direction.z * moveSpeed * 50.0 * delta; if (moveState.left || moveState.right) velocity.x -= direction.x * moveSpeed * 50.0 * delta;
+                 pointerLockControls.moveRight(-velocity.x * delta); pointerLockControls.moveForward(-velocity.z * delta);
+                 pointerLockControls.getObject().position.y = PLAYER_HEIGHT;
+                 playerPos = pointerLockControls.getObject().position; // Get position after movement
+             }
+             else if (currentControlsMode === 'orbit' && orbitControls.enabled) {
+                 orbitControls.update();
+                 playerPos = camera.position; // Use camera position for orbit mode checks if needed
+             }
+
+             // --- Visual Updates ---
+             updateWorldLabels();
+
+             // Animate Energy Sources
+            for (const chakraId in energySourceMeshes) { const sourceData = energySourceMeshes[chakraId]; if (sourceData.isTorusActive && sourceData.torusMesh) { sourceData.torusMesh.rotation.y += delta * 0.8; sourceData.torusMesh.rotation.x += delta * 0.4; } else if (sourceData.sphereMesh) { sourceData.sphereMesh.rotation.y += delta * 0.5; sourceData.sphereMesh.position.y = 0.8 + Math.sin(elapsedTime * 2 + sourceData.sphereMesh.position.x) * 0.1; } }
+
+             // Animate Patients (Pulsing color + Supreme Light)
+             for (const chakraId in patientMeshes) {
+                 const meshGroup = patientMeshes[chakraId]; const ud = meshGroup?.userData; const material = ud?.material;
+                 if (!ud) continue;
+                 if (material && ud.needsHealingIndicator && !ud.isFullyHealed) { const pulseFactor = (Math.sin(elapsedTime * 4.0) + 1) / 2; const basePulseColor = new THREE.Color(0xffdddd); material.color.lerpColors(basePulseColor, ud.baseColor, 0.3 + pulseFactor * 0.7); if (material.opacity !== 1.0) material.opacity = 1.0; }
+                 else if (material && !ud.isFullyHealed && !gsap.isTweening(material.color) && !material.color.equals(ud.baseColor)) { /* Optional: Reset color */ }
+                 if (ud.isSupremeSource && ud.supremeLight) { ud.supremeLight.intensity = 1.5 + Math.sin(elapsedTime * 3.5 + ud.primaryChakraIndex) * 1.0; }
+             }
+
+            // Update Patient UI Positions
+            if (pointerLockControls.isLocked && currentTime - gameState.lastPatientUIUpdateTime > PATIENT_UI_UPDATE_INTERVAL) { for (const id in patientMeshes) { updatePatientUI(patientMeshes[id]); } gameState.lastPatientUIUpdateTime = currentTime; }
+            else if (!pointerLockControls.isLocked) { patientUIContainer.querySelectorAll('.patient-needs-ui.visible').forEach(ui => ui.classList.remove('visible')); }
+
+             // Update Particle Systems
+             if (particleAnimationRunning) { animateParticles(); } // Radial release particles
+             if (completionParticlesRunning) { animateCompletionParticles(); } // Completion particles
+
+             // Update Minimap
+             updateMinimap(currentTime);
+
+             // Update mission panel periodically
+             if (currentTime % 500 < 16) { updateMissionPanel(); }
+
+             // --- Animate Completion NPC & Handle Interaction ---
+             if (icosahedronNPC) {
+                 icosahedronNPC.rotation.y += delta * 0.3;
+                 icosahedronNPC.rotation.x += delta * 0.2;
+                 const scalePulse = 1.0 + Math.sin(elapsedTime * 1.5) * 0.05;
+                 icosahedronNPC.scale.set(scalePulse, scalePulse, scalePulse);
+                 if(centralLightObject) centralLightObject.intensity = 1.5 + Math.sin(elapsedTime * 2.0) * 0.3;
+
+                 // NEW: Check for interaction proximity
+                 if (playerPos && pointerLockControls.isLocked && gameState.gameComplete && interactionPromptEl) {
+                     const distance = playerPos.distanceTo(icosahedronNPC.position);
+                     if (distance <= ICOSAHEDRON_INTERACTION_RADIUS) {
+                         if (!isInteractionPromptVisible) {
+                             interactionPromptEl.innerHTML = "Você está pronto para conhecer as camadas da consciência! Vamos? <br> Pressione [<strong>E</strong>] para Continuar";
+                             interactionPromptEl.style.display = 'block';
+                             isInteractionPromptVisible = true;
+                         }
+                     } else {
+                         if (isInteractionPromptVisible) {
+                             interactionPromptEl.style.display = 'none';
+                             isInteractionPromptVisible = false;
+                         }
+                     }
+                 } else {
+                      // Ensure prompt is hidden if conditions aren't met (e.g., not locked, game not complete)
+                      if (isInteractionPromptVisible) {
+                         interactionPromptEl.style.display = 'none';
+                         isInteractionPromptVisible = false;
+                      }
+                 }
+             } else {
+                 // Ensure prompt is hidden if the NPC doesn't exist (e.g., after reset)
+                 if (isInteractionPromptVisible) {
+                    interactionPromptEl.style.display = 'none';
+                    isInteractionPromptVisible = false;
+                 }
+             }
+
+
+             // Render
+             renderer.render(scene, camera);
+         }
+
+         // --- Configuração Inicial ---
+         function initializeGame() {
+             console.log("Inicializando Jogo V2.3 (Icosahedron Interaction)...");
+             createCenterLayout();
+             resizeParticleCanvas();
+             resizeCompletionParticleCanvas();
+             interactionPromptEl = document.getElementById('interaction-prompt'); // Get prompt element
+             handsImage.onload = resizeParticleCanvas; if (handsImage.complete) { resizeParticleCanvas(); }
+             orbitControls.enabled = true; controlsToggleButton.textContent = 'Ativar Visão Pessoal';
+             updateEnergyPanel();
+             attachInputListeners();
+             setTimeout(() => { updateMissionPanel(); }, 150);
+             setTimeout(() => { if(instructionsEl) instructionsEl.classList.add('hidden'); }, 12000);
+             animate();
+             console.log("Jogo V2.3 Inicializado e Loop Iniciado.");
+         }
+
+         // Inicia quando DOM está pronto
+         document.addEventListener('DOMContentLoaded', initializeGame);
+
+    </script>
+</body>
+</html>
